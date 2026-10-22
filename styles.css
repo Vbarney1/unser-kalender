@@ -1,0 +1,462 @@
+/* ---------- Farben als Variablen: einmal definieren, überall nutzen ---------- */
+:root {
+  --bg: #f2f2f7;
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --muted: #8e8e93;
+  --border: #e5e5ea;
+  --accent: #e8505b;
+  --danger: #ff3b30;
+  --segment-active: #ffffff;
+  --hour: 48px; /* Höhe einer Stunde in der Wochenansicht (wird von app.js gesetzt) */
+  --safe-top: env(safe-area-inset-top);       /* Platz für Notch / Dynamic Island */
+  --safe-bottom: env(safe-area-inset-bottom); /* Platz für den Home-Balken */
+  color-scheme: light dark;
+}
+
+/* Dunkelmodus folgt automatisch der iPhone-Einstellung */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --text: #f2f2f7;
+    --border: #38383a;
+    --segment-active: #636366;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;      /* dvh = echte sichtbare Höhe auf dem Handy */
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+/* ---------- Kopfzeile ---------- */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: calc(var(--safe-top) + 8px) 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.topbar-row { display: flex; align-items: center; gap: 2px; }
+#title {
+  flex: 1;
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icon-btn {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  font-size: 24px;
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+}
+.text-btn { color: var(--accent); padding: 6px 8px; border-radius: 8px; font-size: 16px; }
+.text-btn.strong { font-weight: 600; }
+.icon-btn:active, .text-btn:active { opacity: .5; }
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--bg);
+  border-radius: 9px;
+  padding: 2px;
+}
+.segmented button { padding: 6px; border-radius: 7px; font-size: 14px; font-weight: 500; }
+.segmented button.active { background: var(--segment-active); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+
+/* ---------- Filterleiste (horizontal wischbar) ---------- */
+.filter-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -12px;
+  padding: 0 12px;
+}
+.filter-bar::-webkit-scrollbar { display: none; }
+
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  color: var(--muted);
+  background: var(--surface);
+}
+.chip .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); opacity: .3; }
+.chip.active { color: var(--text); border-color: var(--c, var(--text)); }
+.chip.active .dot { opacity: 1; }
+.chip.view.active { background: var(--text); color: var(--surface); border-color: var(--text); }
+.chip-sep { flex: none; width: 1px; background: var(--border); margin: 4px 2px; }
+
+/* ---------- Hauptbereich ---------- */
+main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(var(--safe-bottom) + 88px); /* Platz für den +-Knopf */
+}
+main.is-week { overflow: hidden; display: flex; padding-bottom: 0; }
+
+/* ---------- Monatsansicht ---------- */
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.weekday { font-size: 11px; color: var(--muted); text-align: center; padding: 6px 0; }
+
+.day {
+  min-height: 74px;
+  padding: 2px 2px 4px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  min-width: 0;
+}
+.day .num {
+  align-self: center;
+  width: 26px; height: 26px; line-height: 26px;
+  text-align: center;
+  border-radius: 50%;
+  font-size: 14px;
+}
+.day.other { color: var(--muted); }
+.day.other .pill { opacity: .45; }
+.day.today .num { color: var(--accent); font-weight: 700; }
+.day.selected .num { background: var(--text); color: var(--surface); font-weight: 600; }
+.day.today.selected .num { background: var(--accent); color: #fff; }
+
+/* Ein Termin im Monatsraster. --c ist die Kategoriefarbe, gesetzt in app.js */
+.pill {
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 3px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--c) 22%, transparent);
+  border-left: 2px solid var(--c);
+}
+.pill.allday { background: var(--c); color: #fff; border-left: 0; }
+.more { font-size: 10px; color: var(--muted); padding-left: 3px; }
+
+@media (min-width: 700px) {
+  .day { min-height: 110px; }
+  .pill, .more { font-size: 12px; line-height: 17px; }
+}
+
+/* Tagesliste unter dem Monat */
+.day-list { padding: 16px 12px 0; max-width: 700px; margin: 0 auto; }
+.day-list h2 { font-size: 15px; margin: 0 0 8px 4px; color: var(--muted); font-weight: 600; }
+.event-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.event-row:active { opacity: .6; }
+.event-row .bar { width: 4px; border-radius: 2px; background: var(--c); flex: none; }
+.event-row .info { min-width: 0; flex: 1; }
+.event-row .name { font-weight: 600; overflow-wrap: anywhere; }
+.event-row .meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.empty { color: var(--muted); text-align: center; padding: 20px; font-size: 14px; }
+
+/* ---------- Wochenansicht ---------- */
+.week { display: flex; flex-direction: column; flex: 1; min-height: 0; background: var(--surface); }
+.week-head, .week-allday, .week-body {
+  display: grid;
+  grid-template-columns: 38px repeat(7, minmax(0, 1fr));
+}
+.week-head { border-bottom: 1px solid var(--border); }
+.week-head > div { text-align: center; font-size: 11px; color: var(--muted); padding: 4px 0; }
+.week-head .date {
+  display: block;
+  width: 30px; height: 30px; line-height: 30px;
+  margin: 2px auto 0;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+}
+.week-head .today .date { background: var(--accent); color: #fff; }
+
+.week-allday { border-bottom: 1px solid var(--border); }
+.week-allday .label { font-size: 9px; color: var(--muted); align-self: center; text-align: center; }
+.week-allday .cell {
+  min-width: 0;
+  min-height: 22px;
+  padding: 2px 1px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 1px solid var(--border);
+}
+
+.week-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(var(--safe-bottom) + 88px);
+}
+.week-body { height: calc(24 * var(--hour)); }
+.hours { position: relative; }
+.hours span {
+  position: absolute;
+  right: 5px;
+  font-size: 10px;
+  color: var(--muted);
+  transform: translateY(-50%);
+}
+.week-col {
+  position: relative;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  /* Stundenlinien ohne zusätzliche Elemente: ein wiederholter Farbverlauf */
+  background-image: repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px var(--hour));
+}
+.week-col.today { background-color: color-mix(in srgb, var(--accent) 6%, transparent); }
+
+.week-event {
+  position: absolute;
+  overflow: hidden;
+  padding: 2px 3px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 12px;
+  text-align: left;
+  color: var(--text);
+  background: color-mix(in srgb, var(--c) 28%, var(--surface));
+  border-left: 3px solid var(--c);
+}
+.week-event .t { font-weight: 600; overflow-wrap: anywhere; }
+.week-event .time { opacity: .75; }
+
+.now-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: var(--accent);
+  z-index: 2;
+  pointer-events: none;
+}
+.now-line::before {
+  content: '';
+  position: absolute;
+  left: -4px; top: -3px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+@media (min-width: 700px) {
+  .week-event, .week-allday .pill { font-size: 12px; line-height: 15px; }
+}
+
+/* ---------- Plus-Knopf ---------- */
+.fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(var(--safe-bottom) + 20px);
+  width: 58px; height: 58px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 32px;
+  line-height: 1;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+  z-index: 5;
+}
+.fab:active { transform: scale(.94); }
+
+/* ---------- Dialoge als "Sheet" von unten, wie in iOS ---------- */
+dialog.sheet {
+  border: 0;
+  padding: 0;
+  margin: auto auto 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: 92dvh;
+  border-radius: 16px 16px 0 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+dialog.sheet::backdrop { background: rgba(0, 0, 0, .35); }
+dialog.sheet[open] { animation: slide-up .25s ease-out; }
+@keyframes slide-up { from { transform: translateY(100%); } }
+@media (min-width: 700px) {
+  dialog.sheet { margin: auto; border-radius: 16px; }
+}
+
+.sheet-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 10px 8px;
+  background: var(--bg);
+}
+.sheet-header > :first-child { justify-self: start; }
+.sheet-header > :last-child { justify-self: end; }
+.sheet-header h2 { margin: 0; font-size: 17px; }
+.sheet-body { padding: 4px 16px calc(var(--safe-bottom) + 24px); }
+
+.group { background: var(--surface); border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+.field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.group > :last-child, .time-fields > :last-child { border-bottom: 0; }
+.time-fields { border-bottom: 1px solid var(--border); }
+.group > .time-fields:last-child { border-bottom: 0; }
+.field > span { flex: none; }
+.field.stack { align-items: stretch; }
+
+/* 16px Schrift verhindert, dass iOS beim Antippen hineinzoomt */
+input, select, textarea {
+  font: inherit;
+  font-size: 16px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  -webkit-user-select: text;
+  user-select: text;
+}
+input.left, textarea { text-align: left; }
+select { text-align-last: right; appearance: none; -webkit-appearance: none; color: var(--accent); cursor: pointer; }
+textarea { resize: vertical; padding: 4px 0; }
+
+/* Checkbox als iOS-Schalter */
+.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  margin: 0 0 0 auto;
+  width: 51px; height: 31px;
+  border-radius: 16px;
+  background: var(--border);
+  position: relative;
+  transition: background .2s;
+  cursor: pointer;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 27px; height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+  transition: transform .2s;
+}
+.switch:checked { background: #34c759; }
+.switch:checked::after { transform: translateX(20px); }
+
+.hint { font-size: 13px; color: var(--muted); margin: -8px 4px 16px; }
+.inline-form + .hint { margin-top: 6px; }
+.form-error { color: var(--danger); font-size: 14px; margin: 0 4px 12px; }
+.form-error:empty { display: none; }
+.danger-btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--danger);
+  font-weight: 500;
+}
+
+/* Einstellungen */
+.sheet-body h3 {
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 16px 4px 6px;
+}
+.edit-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: 12px; overflow: hidden; }
+.edit-list:empty { display: none; }
+.edit-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.edit-list li:last-child { border-bottom: 0; }
+.edit-list input { text-align: left; }
+.edit-list .meta { font-size: 13px; color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.edit-list .name { flex: none; font-weight: 500; }
+.small-danger { color: var(--danger); font-size: 14px; flex: none; padding: 6px 0 6px 6px; }
+
+.inline-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 6px 8px 6px 14px;
+  background: var(--surface);
+  border-radius: 12px;
+}
+
+input[type="color"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: none;
+  width: 30px; height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+}
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 50%; }
+input[type="color"]::-moz-color-swatch { border: 0; border-radius: 50%; }
