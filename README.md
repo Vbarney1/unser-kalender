@@ -9,7 +9,8 @@ Kalender-Web-App (PWA) ohne Framework. Termine liegen vorerst nur lokal im Brows
 | `index.html` | Grundgerüst, Formulare, iPhone-Meta-Tags |
 | `styles.css` | Design (Handy zuerst, Hell/Dunkel automatisch) |
 | `store.js` | **Einziger** Ort für das Speichern (heute `localStorage`, später Supabase) |
-| `calendar.js` | Datumslogik: Raster, Wiederholungen, Überlappungen |
+| `calendar.js` | Datumslogik: Raster, Wiederholungen, Überlappungen, Kalenderwoche |
+| `holidays.js` | Feiertage in Bayern (berechnet, nicht ausblendbar) |
 | `app.js` | Oberfläche: Zeichnen, Klicks, Formulare |
 | `sw.js` + `manifest.webmanifest` + `icons/` | PWA: Homescreen-Icon und Offline-Start |
 | `tools/serve.ps1` | Mini-Webserver zum Testen am PC |

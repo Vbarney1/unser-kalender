@@ -8,6 +8,8 @@
   --accent: #e8505b;
   --danger: #ff3b30;
   --segment-active: #ffffff;
+  --weekend: rgba(0, 0, 0, .035);
+  --holiday: #f59e0b;
   --hour: 48px; /* Höhe einer Stunde in der Wochenansicht (wird von app.js gesetzt) */
   --safe-top: env(safe-area-inset-top);       /* Platz für Notch / Dynamic Island */
   --safe-bottom: env(safe-area-inset-bottom); /* Platz für den Home-Balken */
@@ -22,6 +24,7 @@
     --text: #f2f2f7;
     --border: #38383a;
     --segment-active: #636366;
+    --weekend: rgba(255, 255, 255, .05);
   }
 }
 
@@ -110,11 +113,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   color: var(--muted);
   background: var(--surface);
 }
-.chip .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); opacity: .3; }
-.chip.active { color: var(--text); border-color: var(--c, var(--text)); }
-.chip.active .dot { opacity: 1; }
-.chip.view.active { background: var(--text); color: var(--surface); border-color: var(--text); }
-.chip-sep { flex: none; width: 1px; background: var(--border); margin: 4px 2px; }
+.chip.active { background: var(--text); color: var(--surface); border-color: var(--text); }
 
 /* ---------- Hauptbereich ---------- */
 main {
@@ -152,6 +151,9 @@ main.is-week { overflow: hidden; display: flex; padding-bottom: 0; }
   border-radius: 50%;
   font-size: 14px;
 }
+/* Wochenende: leicht grau hinterlegt, Feiertage: Tageszahl in Feiertagsfarbe */
+.weekday.weekend, .day.weekend, .week-col.weekend { background-color: var(--weekend); }
+.day.holiday:not(.selected) .num { color: var(--holiday); font-weight: 600; }
 .day.other { color: var(--muted); }
 .day.other .pill { opacity: .45; }
 .day.today .num { color: var(--accent); font-weight: 700; }
@@ -216,6 +218,8 @@ main.is-week { overflow: hidden; display: flex; padding-bottom: 0; }
   color: var(--text);
 }
 .week-head .today .date { background: var(--accent); color: #fff; }
+.week-head .kw { font-size: 10px; }
+.week-head .kw .date { font-size: 13px; font-weight: 600; color: var(--muted); }
 
 .week-allday { border-bottom: 1px solid var(--border); }
 .week-allday .label { font-size: 9px; color: var(--muted); align-self: center; text-align: center; }
@@ -305,15 +309,15 @@ main.is-week { overflow: hidden; display: flex; padding-bottom: 0; }
 }
 .fab:active { transform: scale(.94); }
 
-/* ---------- Dialoge als "Sheet" von unten, wie in iOS ---------- */
+/* ---------- Dialoge: auf dem Handy als Vollbild, das von unten hereinfährt ---------- */
 dialog.sheet {
   border: 0;
   padding: 0;
-  margin: auto auto 0;
+  margin: 0;
   width: 100%;
-  max-width: 560px;
-  max-height: 92dvh;
-  border-radius: 16px 16px 0 0;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
   background: var(--bg);
   color: var(--text);
   overflow-y: auto;
@@ -322,8 +326,9 @@ dialog.sheet {
 dialog.sheet::backdrop { background: rgba(0, 0, 0, .35); }
 dialog.sheet[open] { animation: slide-up .25s ease-out; }
 @keyframes slide-up { from { transform: translateY(100%); } }
+/* Am großen Bildschirm (PC/iPad) lieber ein zentriertes Fenster */
 @media (min-width: 700px) {
-  dialog.sheet { margin: auto; border-radius: 16px; }
+  dialog.sheet { margin: auto; width: 100%; max-width: 560px; height: auto; max-height: 90dvh; border-radius: 16px; }
 }
 
 .sheet-header {
@@ -333,9 +338,10 @@ dialog.sheet[open] { animation: slide-up .25s ease-out; }
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  padding: 10px 8px;
+  padding: calc(var(--safe-top) + 10px) 8px 10px; /* Platz für die Notch */
   background: var(--bg);
 }
+.sheet-header h2:focus { outline: none; }
 .sheet-header > :first-child { justify-self: start; }
 .sheet-header > :last-child { justify-self: end; }
 .sheet-header h2 { margin: 0; font-size: 17px; }
@@ -401,7 +407,9 @@ textarea { resize: vertical; padding: 4px 0; }
 .switch:checked::after { transform: translateX(20px); }
 
 .hint { font-size: 13px; color: var(--muted); margin: -8px 4px 16px; }
-.inline-form + .hint { margin-top: 6px; }
+.hint.below { margin: 6px 4px 0; }
+/* Kleiner Pfeil, damit man sieht: hier kann man tippen und auswählen */
+.field.chevron::after { content: '›'; color: var(--muted); font-size: 20px; margin-left: -6px; }
 .form-error { color: var(--danger); font-size: 14px; margin: 0 4px 12px; }
 .form-error:empty { display: none; }
 .danger-btn {
@@ -435,7 +443,9 @@ textarea { resize: vertical; padding: 4px 0; }
 .edit-list input { text-align: left; }
 .edit-list .meta { font-size: 13px; color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .edit-list .name { flex: none; font-weight: 500; }
-.small-danger { color: var(--danger); font-size: 14px; flex: none; padding: 6px 0 6px 6px; }
+.small-danger { color: var(--danger); font-size: 16px; flex: none; width: 32px; height: 32px; margin-right: -8px; }
+.edit-list .swatch { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--c); }
+.edit-list .fixed .meta { text-align: right; }
 
 .inline-form {
   display: flex;

@@ -44,13 +44,14 @@
     <form id="event-form" novalidate>
       <div class="sheet-header">
         <button type="button" class="text-btn" data-close>Abbrechen</button>
-        <h2 id="event-dialog-title">Neuer Termin</h2>
+        <!-- autofocus + tabindex: Fokus landet beim Öffnen hier statt im Textfeld (keine Tastatur) -->
+        <h2 id="event-dialog-title" tabindex="-1" autofocus>Neuer Termin</h2>
         <button type="submit" class="text-btn strong">Sichern</button>
       </div>
       <div class="sheet-body">
         <div class="group">
           <label class="field"><input name="title" placeholder="Titel" maxlength="100" autocomplete="off" class="left"></label>
-          <label class="field"><span>Kategorie</span><select name="categoryId"></select></label>
+          <label class="field chevron"><span>Kategorie</span><select name="categoryId"></select></label>
         </div>
         <div class="group">
           <label class="field"><span>Datum</span><input type="date" name="date"></label>
@@ -78,14 +79,15 @@
   <dialog id="settings-dialog" class="sheet">
     <div class="sheet-header">
       <span></span>
-      <h2>Einstellungen</h2>
+      <h2 tabindex="-1" autofocus>Einstellungen</h2>
       <button type="button" class="text-btn strong" data-close>Fertig</button>
     </div>
     <div class="sheet-body">
       <h3>Kategorien</h3>
       <ul id="category-list" class="edit-list"></ul>
+      <p class="hint below">Der Schalter blendet eine Kategorie im Kalender ein oder aus.</p>
       <form id="category-add" class="inline-form">
-        <input type="color" name="color" value="#f59e0b" aria-label="Farbe">
+        <input type="color" name="color" value="#14b8a6" aria-label="Farbe">
         <input name="name" placeholder="Neue Kategorie" maxlength="30" required class="left">
         <button class="text-btn strong">Hinzufügen</button>
       </form>
@@ -96,7 +98,7 @@
         <input name="name" placeholder="Name, z. B. Studium" maxlength="30" required class="left">
         <button class="text-btn strong">Speichern</button>
       </form>
-      <p class="hint">Speichert die gerade eingeschalteten Kategorien als Ansicht.</p>
+      <p class="hint below">Speichert die gerade eingeschalteten Kategorien als Ansicht. Sie erscheint dann oben als Schnellauswahl.</p>
     </div>
   </dialog>
 </body>

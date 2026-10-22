@@ -71,6 +71,15 @@ function compareOccurrences(a, b) {
   return (a.start ?? '').localeCompare(b.start ?? '');
 }
 
+// Kalenderwoche nach ISO 8601 (in Deutschland üblich): Die KW 1 ist die Woche mit dem
+// ersten Donnerstag des Jahres. Trick: Wir springen zum Donnerstag der Woche.
+export function isoWeek(date) {
+  const thursday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  thursday.setDate(thursday.getDate() + 3 - ((thursday.getDay() + 6) % 7));
+  const jan1 = new Date(thursday.getFullYear(), 0, 1);
+  return Math.floor(Math.round((thursday - jan1) / 86_400_000) / 7) + 1;
+}
+
 export function timeToMinutes(t) {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;

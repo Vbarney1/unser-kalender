@@ -4,8 +4,11 @@
 
 import * as store from './store.js';
 import * as cal from './calendar.js';
+import { HOLIDAY_COLOR, holidaysInRange } from './holidays.js';
 
 const HOUR_PX = 48;
+const WEEK_START_HOUR = 7; // Wochenansicht zeigt oben zuerst 7 Uhr
+const FALLBACK_COLOR = '#8e8e93';
 document.documentElement.style.setProperty('--hour', `${HOUR_PX}px`);
 
 const todayISO = () => cal.toISODate(new Date());
@@ -15,7 +18,7 @@ const ui = {
   mode: store.getPrefs().mode,  // 'month' oder 'week'
   cursor: new Date(),           // welcher Monat / welche Woche sichtbar ist
   selected: todayISO(),         // ausgewählter Tag
-  weekScrollTop: 7 * HOUR_PX,   // Wochenansicht startet bei 7 Uhr
+  weekScrollTop: WEEK_START_HOUR * HOUR_PX,
 };
 let editingId = null; // id des Termins im Formular, null = neuer Termin
 
@@ -53,14 +56,25 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
-// ---------- Filter ----------
+// ---------- Kategorien, Filter, Feiertage ----------
 const categoryById = id => store.getCategories().find(c => c.id === id);
 const hiddenIds = () => new Set(store.getPrefs().hiddenCategoryIds);
 const visibleCategoryIds = () => store.getCategories().map(c => c.id).filter(id => !hiddenIds().has(id));
+const colorOf = o => (o.holiday ? HOLIDAY_COLOR : categoryById(o.categoryId)?.color ?? FALLBACK_COLOR);
+const isWeekend = date => date.getDay() === 0 || date.getDay() === 6;
 
 function visibleEvents() {
   const hidden = hiddenIds();
   return store.getEvents().filter(e => !hidden.has(e.categoryId));
+}
+
+// Alle sichtbaren Termine im Zeitraum, plus Feiertage. Feiertage kommen immer dazu,
+// egal welcher Filter aktiv ist, und stehen an ihrem Tag ganz oben.
+function occurrencesBetween(from, to) {
+  const holidays = holidaysInRange(from, to).map(h => ({
+    id: `holiday-${h.date}`, title: h.name, allDay: true, holiday: true, occurrenceDate: h.date,
+  }));
+  return [...holidays, ...cal.occurrences(visibleEvents(), from, to)];
 }
 
 function showOnly(categoryIds) {
@@ -78,31 +92,28 @@ function toggleCategory(id) {
 
 const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
 
+// Oben stehen nur "Alle" und die gespeicherten Ansichten.
+// Einzelne Kategorien schaltet man in den Einstellungen.
 function renderFilterBar() {
   const visible = visibleCategoryIds();
   const categories = store.getCategories();
   const allVisible = visible.length === categories.length;
   const existing = new Set(categories.map(c => c.id));
+  const views = store.getViews();
 
-  const viewChips = store.getViews().map(view => {
-    const ids = view.categoryIds.filter(id => existing.has(id));
-    return el('button', {
-      class: `chip view${!allVisible && sameSet(ids, visible) ? ' active' : ''}`,
-      onclick: () => showOnly(ids),
-    }, `★ ${view.name}`);
-  });
+  // Ohne Ansichten und ohne Filter wäre die Leiste nutzlos – dann ausblenden.
+  els.filterBar.hidden = views.length === 0 && allVisible;
 
   // replaceChildren nimmt keine Listen, deshalb mit .flat() zu einer Ebene "plattdrücken".
   els.filterBar.replaceChildren(...[
-    el('button', { class: `chip view${allVisible ? ' active' : ''}`, onclick: () => showOnly(existing) }, 'Alle'),
-    viewChips,
-    el('span', { class: 'chip-sep' }),
-    categories.map(c => el('button', {
-      class: `chip${visible.includes(c.id) ? ' active' : ''}`,
-      color: c.color,
-      'aria-pressed': String(visible.includes(c.id)),
-      onclick: () => toggleCategory(c.id),
-    }, el('span', { class: 'dot' }), c.name)),
+    el('button', { class: `chip${allVisible ? ' active' : ''}`, onclick: () => showOnly(existing) }, 'Alle'),
+    views.map(view => {
+      const ids = view.categoryIds.filter(id => existing.has(id));
+      return el('button', {
+        class: `chip${!allVisible && sameSet(ids, visible) ? ' active' : ''}`,
+        onclick: () => showOnly(ids),
+      }, `★ ${view.name}`);
+    }),
   ].flat());
 }
 
@@ -120,31 +131,36 @@ function renderMonth() {
   const year = ui.cursor.getFullYear();
   const month = ui.cursor.getMonth();
   const days = cal.monthGrid(year, month);
-  const byDay = groupByDay(cal.occurrences(visibleEvents(), cal.toISODate(days[0]), cal.toISODate(days[41])));
+  const byDay = groupByDay(occurrencesBetween(cal.toISODate(days[0]), cal.toISODate(days[41])));
   const today = todayISO();
   const MAX_PILLS = 3;
 
   const grid = el('div', { class: 'month-grid' },
-    cal.WEEKDAYS_SHORT.map(name => el('div', { class: 'weekday' }, name)),
+    cal.WEEKDAYS_SHORT.map((name, i) => el('div', { class: `weekday${i >= 5 ? ' weekend' : ''}` }, name)),
     days.map(d => {
       const iso = cal.toISODate(d);
       const list = byDay.get(iso) ?? [];
       const classes = ['day',
         d.getMonth() !== month && 'other',
+        isWeekend(d) && 'weekend',
+        list.some(o => o.holiday) && 'holiday',
         iso === today && 'today',
         iso === ui.selected && 'selected'].filter(Boolean).join(' ');
       return el('button', { class: classes, onclick: () => { ui.selected = iso; render(); } },
         el('span', { class: 'num' }, d.getDate()),
         list.slice(0, MAX_PILLS).map(o => el('div', {
           class: `pill${o.allDay ? ' allday' : ''}`,
-          color: categoryById(o.categoryId)?.color,
+          color: colorOf(o),
         }, o.title)),
         list.length > MAX_PILLS && el('div', { class: 'more' }, `+${list.length - MAX_PILLS}`),
       );
     }),
   );
 
+  // Scrollposition merken, damit das Neuzeichnen (z. B. jede Minute) nicht springt.
+  const scrollTop = els.calendar.scrollTop;
   els.calendar.replaceChildren(grid, renderDayList(ui.selected));
+  els.calendar.scrollTop = scrollTop;
 }
 
 function timeLabel(o) {
@@ -152,14 +168,20 @@ function timeLabel(o) {
 }
 
 function renderDayList(iso) {
-  const list = cal.occurrences(visibleEvents(), iso, iso);
+  const list = occurrencesBetween(iso, iso);
   return el('section', { class: 'day-list' },
     el('h2', {}, cal.formatLongDate(iso)),
     list.length === 0
       ? el('p', { class: 'empty' }, 'Keine Termine. Tippe auf +, um einen anzulegen.')
       : list.map(o => {
+        if (o.holiday) {
+          // Feiertage lassen sich nicht bearbeiten, deshalb kein Button.
+          return el('div', { class: 'event-row', color: HOLIDAY_COLOR },
+            el('span', { class: 'bar' }),
+            el('span', { class: 'info' }, el('div', { class: 'name' }, o.title), el('div', { class: 'meta' }, 'Feiertag')));
+        }
         const category = categoryById(o.categoryId);
-        return el('button', { class: 'event-row', color: category?.color, onclick: () => openEventForm(o) },
+        return el('button', { class: 'event-row', color: colorOf(o), onclick: () => openEventForm(o) },
           el('span', { class: 'bar' }),
           el('span', { class: 'info' },
             el('div', { class: 'name' }, o.title),
@@ -175,11 +197,11 @@ function renderDayList(iso) {
 function renderWeek() {
   const days = cal.weekDays(ui.cursor);
   const isoDays = days.map(cal.toISODate);
-  const byDay = groupByDay(cal.occurrences(visibleEvents(), isoDays[0], isoDays[6]));
+  const byDay = groupByDay(occurrencesBetween(isoDays[0], isoDays[6]));
   const today = todayISO();
 
   const head = el('div', { class: 'week-head' },
-    el('div'),
+    el('div', { class: 'kw' }, 'KW', el('span', { class: 'date' }, cal.isoWeek(days[0]))),
     days.map((d, i) => el('div', { class: isoDays[i] === today ? 'today' : null },
       cal.WEEKDAYS_SHORT[i], el('span', { class: 'date' }, d.getDate()))),
   );
@@ -187,29 +209,30 @@ function renderWeek() {
   const allDay = el('div', { class: 'week-allday' },
     el('div', { class: 'label' }, 'ganzt.'),
     isoDays.map(iso => el('div', { class: 'cell' },
-      (byDay.get(iso) ?? []).filter(o => o.allDay).map(o => el('button', {
+      (byDay.get(iso) ?? []).filter(o => o.allDay).map(o => el(o.holiday ? 'div' : 'button', {
         class: 'pill allday',
-        color: categoryById(o.categoryId)?.color,
-        onclick: () => openEventForm(o),
+        color: colorOf(o),
+        onclick: o.holiday ? null : () => openEventForm(o),
       }, o.title)))),
   );
 
   const hours = el('div', { class: 'hours' },
     Array.from({ length: 23 }, (_, i) => el('span', { style: `top:${(i + 1) * HOUR_PX}px` }, `${i + 1}:00`)));
 
-  const columns = isoDays.map(iso => {
+  const columns = isoDays.map((iso, dayIndex) => {
     const timed = (byDay.get(iso) ?? [])
       .filter(o => !o.allDay)
       .map(o => ({ ...o, startMin: cal.timeToMinutes(o.start), endMin: cal.timeToMinutes(o.end) }));
 
-    const col = el('div', { class: `week-col${iso === today ? ' today' : ''}` },
+    const classes = ['week-col', isWeekend(days[dayIndex]) && 'weekend', iso === today && 'today'].filter(Boolean).join(' ');
+    const col = el('div', { class: classes },
       cal.layoutOverlaps(timed).map(o => {
         const top = (o.startMin / 60) * HOUR_PX;
         const height = Math.max(((o.endMin - o.startMin) / 60) * HOUR_PX - 2, 18);
         const width = 100 / o.lanes;
         return el('button', {
           class: 'week-event',
-          color: categoryById(o.categoryId)?.color,
+          color: colorOf(o),
           style: `top:${top}px;height:${height}px;left:calc(${o.lane * width}% + 1px);width:calc(${width}% - 2px)`,
           onclick: () => openEventForm(o),
         }, el('div', { class: 't' }, o.title), height > 30 && el('div', { class: 'time' }, o.start));
@@ -258,6 +281,7 @@ function move(step) {
     const now = new Date();
     const isCurrentMonth = now.getFullYear() === ui.cursor.getFullYear() && now.getMonth() === ui.cursor.getMonth();
     ui.selected = isCurrentMonth ? todayISO() : cal.toISODate(ui.cursor);
+    els.calendar.scrollTop = 0;
   }
   render();
 }
@@ -267,14 +291,16 @@ $('#btn-next').addEventListener('click', () => move(1));
 $('#btn-today').addEventListener('click', () => {
   ui.cursor = new Date();
   ui.selected = todayISO();
-  ui.weekScrollTop = Math.max(0, (new Date().getHours() - 1) * HOUR_PX);
+  ui.weekScrollTop = WEEK_START_HOUR * HOUR_PX;
   render();
 });
 
 document.querySelectorAll('.segmented button').forEach(button => {
   button.addEventListener('click', () => {
+    if (ui.mode === button.dataset.mode) return;
     ui.mode = button.dataset.mode;
     ui.cursor = cal.parseISODate(ui.selected); // zeige den Monat/die Woche des gewählten Tags
+    if (ui.mode === 'week') ui.weekScrollTop = WEEK_START_HOUR * HOUR_PX; // immer bei 7 Uhr beginnen
     store.setPrefs({ mode: ui.mode });
     render();
   });
@@ -300,8 +326,10 @@ function updateFormVisibility() {
 }
 
 function fillCategorySelect(selectedId) {
-  F.categoryId.replaceChildren(...store.getCategories().map(c => el('option', { value: c.id }, c.name)));
-  F.categoryId.value = selectedId;
+  const categories = store.getCategories();
+  F.categoryId.replaceChildren(...categories.map(c => el('option', { value: c.id }, c.name)));
+  // Falls die Kategorie nicht (mehr) existiert, die erste nehmen.
+  F.categoryId.value = categories.some(c => c.id === selectedId) ? selectedId : categories[0].id;
 }
 
 // event = vorhandener Termin (auch ein Vorkommen einer Serie) oder null für "neu".
@@ -328,7 +356,7 @@ function openEventForm(event, defaults = {}) {
     editingId = null;
     els.eventDialogTitle.textContent = 'Neuer Termin';
     // Vorauswahl: erste sichtbare Kategorie, damit der neue Termin auch zu sehen ist.
-    fillCategorySelect(visibleCategoryIds()[0] ?? store.getCategories()[0].id);
+    fillCategorySelect(visibleCategoryIds()[0]);
     F.date.value = defaults.date ?? ui.selected;
     F.start.value = defaults.start ?? '09:00';
     F.end.value = cal.minutesToTime(cal.timeToMinutes(F.start.value) + 60);
@@ -337,8 +365,10 @@ function openEventForm(event, defaults = {}) {
   els.seriesHint.hidden = !original?.repeatUntil;
   els.deleteBtn.hidden = !original;
   updateFormVisibility();
+  // showModal() setzt den Fokus auf die Überschrift (autofocus im HTML),
+  // nicht auf ein Textfeld – so bleibt die Tastatur zu, bis man ein Feld antippt.
   els.eventDialog.showModal();
-  if (!original) F.title.focus(); // bei neuen Terminen gleich lostippen
+  els.eventDialog.scrollTop = 0;
 }
 
 F.allDay.addEventListener('change', updateFormVisibility);
@@ -415,40 +445,56 @@ $('#btn-add').addEventListener('click', () => openEventForm(null));
 
 // ---------- Einstellungen: Kategorien & Ansichten ----------
 function renderSettings() {
-  els.categoryList.replaceChildren(...store.getCategories().map(c => el('li', {},
-    el('input', {
-      type: 'color', value: c.color, 'aria-label': `Farbe von ${c.name}`,
-      onchange: e => { store.updateCategory(c.id, { color: e.target.value }); render(); },
-    }),
-    el('input', {
-      value: c.name, maxlength: 30, 'aria-label': 'Name',
-      onchange: e => { store.updateCategory(c.id, { name: e.target.value }); renderSettings(); render(); },
-    }),
-    el('button', {
-      class: 'small-danger',
-      onclick: () => {
-        if (!confirm(`Kategorie „${c.name}" löschen?`)) return;
-        const result = store.deleteCategory(c.id);
-        if (!result.ok) alert(result.message);
-        renderSettings();
-        render();
-      },
-    }, 'Löschen'),
-  )));
+  const visible = visibleCategoryIds();
+  els.categoryList.replaceChildren(
+    ...store.getCategories().map(c => el('li', {},
+      el('input', {
+        type: 'color', value: c.color, 'aria-label': `Farbe von ${c.name}`,
+        onchange: e => { store.updateCategory(c.id, { color: e.target.value }); render(); },
+      }),
+      el('input', {
+        value: c.name, maxlength: 30, 'aria-label': 'Name',
+        onchange: e => { store.updateCategory(c.id, { name: e.target.value }); renderSettings(); render(); },
+      }),
+      // Schalter: Kategorie im Kalender anzeigen oder ausblenden.
+      el('input', {
+        type: 'checkbox', class: 'switch', checked: visible.includes(c.id),
+        'aria-label': `${c.name} anzeigen`,
+        onchange: () => toggleCategory(c.id),
+      }),
+      el('button', {
+        class: 'small-danger', 'aria-label': `${c.name} löschen`,
+        onclick: () => {
+          if (!confirm(`Kategorie „${c.name}" löschen?`)) return;
+          const result = store.deleteCategory(c.id);
+          if (!result.ok) alert(result.message);
+          renderSettings();
+          render();
+        },
+      }, '✕'),
+    )),
+    // Feiertage: feste Zeile, nicht bearbeitbar und nicht ausblendbar.
+    el('li', { class: 'fixed', color: HOLIDAY_COLOR },
+      el('span', { class: 'swatch' }),
+      el('span', { class: 'name' }, 'Feiertage (Bayern)'),
+      el('span', { class: 'meta' }, 'immer sichtbar'),
+    ),
+  );
 
   els.viewList.replaceChildren(...store.getViews().map(v => el('li', {},
     el('span', { class: 'name' }, `★ ${v.name}`),
     el('span', { class: 'meta' }, v.categoryIds.map(id => categoryById(id)?.name).filter(Boolean).join(', ') || '–'),
     el('button', {
-      class: 'small-danger',
+      class: 'small-danger', 'aria-label': `Ansicht ${v.name} löschen`,
       onclick: () => { store.deleteView(v.id); renderSettings(); render(); },
-    }, 'Löschen'),
+    }, '✕'),
   )));
 }
 
 $('#btn-settings').addEventListener('click', () => {
   renderSettings();
   els.settingsDialog.showModal();
+  els.settingsDialog.scrollTop = 0;
 });
 
 $('#category-add').addEventListener('submit', e => {
@@ -473,10 +519,9 @@ $('#view-add').addEventListener('submit', e => {
   render();
 });
 
-// Dialoge schließen: per "Abbrechen"/"Fertig" oder Tippen auf den dunklen Hintergrund.
+// Dialoge schließen per "Abbrechen"/"Fertig".
 for (const dialog of document.querySelectorAll('dialog')) {
   dialog.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => dialog.close()));
-  dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
 }
 
 // ---------- Start ----------

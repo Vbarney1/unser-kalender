@@ -36,16 +36,50 @@ function writeJSON(key, value) {
                 end: 'HH:MM'|null, repeatUntil: 'YYYY-MM-DD'|null, note }
    category = { id, name, color: '#rrggbb' }
    view     = { id, name, categoryIds: [] } */
-const data = readJSON(DATA_KEY, null) ?? {
-  version: 1,
-  categories: DEFAULT_CATEGORIES.map(c => ({ ...c })),
-  events: [],
-  views: [],
-};
+const isHexColor = c => /^#[0-9a-f]{6}$/i.test(c);
+const isDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const isTime = s => typeof s === 'string' && /^\d{2}:\d{2}$/.test(s);
+
+// Gespeicherte Daten nie blind vertrauen: Ein kaputter Eintrag soll nicht die ganze
+// App abstürzen lassen. Wir reparieren, was geht, und werfen den Rest weg.
+// (Das brauchen wir später auch für Backup-Import und Supabase.)
+function normalizeEvent(e) {
+  if (!e || typeof e.id !== 'string' || !isDate(e.date)) return null;
+  const hasTimes = isTime(e.start) && isTime(e.end) && e.end > e.start;
+  const allDay = Boolean(e.allDay) || !hasTimes;
+  return {
+    id: e.id,
+    title: String(e.title ?? '').trim() || '(ohne Titel)',
+    categoryId: String(e.categoryId ?? ''),
+    date: e.date,
+    allDay,
+    start: allDay ? null : e.start,
+    end: allDay ? null : e.end,
+    repeatUntil: isDate(e.repeatUntil) && e.repeatUntil >= e.date ? e.repeatUntil : null,
+    note: String(e.note ?? ''),
+  };
+}
+
+function normalizeData(raw) {
+  const categories = (Array.isArray(raw?.categories) ? raw.categories : [])
+    .filter(c => c && typeof c.id === 'string')
+    .map(c => ({ id: c.id, name: String(c.name ?? '').trim() || 'Ohne Namen', color: isHexColor(c.color) ? c.color : '#8e8e93' }));
+  return {
+    version: 1,
+    categories: categories.length ? categories : DEFAULT_CATEGORIES.map(c => ({ ...c })),
+    events: (Array.isArray(raw?.events) ? raw.events : []).map(normalizeEvent).filter(Boolean),
+    views: (Array.isArray(raw?.views) ? raw.views : [])
+      .filter(v => v && typeof v.id === 'string' && Array.isArray(v.categoryIds))
+      .map(v => ({ id: v.id, name: String(v.name ?? 'Ansicht'), categoryIds: v.categoryIds.map(String) })),
+  };
+}
+
+const data = normalizeData(readJSON(DATA_KEY, null));
 const prefs = { mode: 'month', hiddenCategoryIds: [], ...readJSON(PREFS_KEY, {}) };
+if (!['month', 'week'].includes(prefs.mode)) prefs.mode = 'month';
+if (!Array.isArray(prefs.hiddenCategoryIds)) prefs.hiddenCategoryIds = [];
 
 const persist = () => writeJSON(DATA_KEY, data);
-const isHexColor = c => /^#[0-9a-f]{6}$/i.test(c);
 
 export function newId() {
   // randomUUID gibt es nur über HTTPS/localhost, deshalb ein Ersatz.
@@ -97,6 +131,7 @@ export function deleteCategory(id) {
 }
 
 // ---------- Gespeicherte Ansichten ----------
+// Später mit Supabase: Ansichten gehören zum jeweiligen Konto und werden nicht geteilt.
 export const getViews = () => data.views;
 
 export function addView(name, categoryIds) {
