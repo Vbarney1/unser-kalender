@@ -4,13 +4,17 @@
 // (z. B. schlechter Empfang in der U-Bahn) –, nehmen wir die gespeicherte Kopie.
 // Wenn du Dateien hinzufügst, ergänze ASSETS und erhöhe die Versionsnummer.
 
-const CACHE = 'kalender-v2';
+const CACHE = 'kalender-v4';
 const NETWORK_TIMEOUT_MS = 3000;
+// Supabase-Bibliothek vom CDN. Die Version steht in der Adresse und ändert sich nie,
+// deshalb nehmen wir hier immer die gespeicherte Kopie (schneller, klappt offline).
+const SUPABASE_LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './config.js',
   './store.js',
   './calendar.js',
   './holidays.js',
@@ -21,7 +25,11 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
+  event.waitUntil(caches.open(CACHE).then(async cache => {
+    await cache.addAll(ASSETS);
+    // Fremde Adresse: Wenn das CDN gerade hakt, soll nicht die ganze Installation scheitern.
+    await cache.add(SUPABASE_LIB).catch(err => console.warn('Supabase-Bibliothek nicht gespeichert:', err));
+  }));
   self.skipWaiting();
 });
 
@@ -58,8 +66,20 @@ async function networkFirst(request) {
   return cached ?? network;
 }
 
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok) cache.put(request, response.clone());
+  return response;
+}
+
 self.addEventListener('fetch', event => {
   const { request } = event;
-  if (request.method !== 'GET' || new URL(request.url).origin !== location.origin) return;
+  if (request.method !== 'GET') return;
+  if (request.url === SUPABASE_LIB) return event.respondWith(cacheFirst(request));
+  // Alles andere von fremden Adressen (z. B. die Supabase-Datenbank) nie zwischenspeichern.
+  if (new URL(request.url).origin !== location.origin) return;
   event.respondWith(networkFirst(request));
 });

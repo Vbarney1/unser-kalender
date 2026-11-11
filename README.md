@@ -1,6 +1,7 @@
 # Unser Kalender – Version 1
 
-Kalender-Web-App (PWA) ohne Framework. Termine liegen vorerst nur lokal im Browser.
+Kalender-Web-App (PWA) ohne Framework. Termine liegen in Supabase und werden zwischen zwei Konten geteilt.
+Einrichtung: siehe [SUPABASE.md](SUPABASE.md).
 
 ## Dateien
 
@@ -8,7 +9,9 @@ Kalender-Web-App (PWA) ohne Framework. Termine liegen vorerst nur lokal im Brows
 |---|---|
 | `index.html` | Grundgerüst, Formulare, iPhone-Meta-Tags |
 | `styles.css` | Design (Handy zuerst, Hell/Dunkel automatisch) |
-| `store.js` | **Einziger** Ort für das Speichern (heute `localStorage`, später Supabase) |
+| `store.js` | **Einziger** Ort für das Speichern: Supabase plus Kopie im Browser für offline |
+| `config.js` | Supabase-Adresse und öffentlicher anon-Schlüssel |
+| `supabase/schema.sql` | Tabellen und Zugriffsregeln, einmal im Supabase SQL Editor ausführen |
 | `calendar.js` | Datumslogik: Raster, Wiederholungen, Überlappungen, Kalenderwoche |
 | `holidays.js` | Feiertage in Bayern (berechnet, nicht ausblendbar) |
 | `app.js` | Oberfläche: Zeichnen, Klicks, Formulare |
@@ -36,5 +39,6 @@ Für den Homescreen braucht die App eine HTTPS-Adresse. Am einfachsten geht das 
 
 ## Gut zu wissen
 
-- Die Daten liegen nur auf dem jeweiligen Gerät. Löscht man die Website-Daten in Safari, sind sie weg.
+- Die Daten liegen in Supabase. Auf dem Gerät liegt nur eine Kopie zum Offline-Ansehen.
+- Offline kann man nur ansehen, nicht ändern.
 - Nach Code-Änderungen in `sw.js` die Versionsnummer `CACHE` erhöhen.

@@ -470,3 +470,55 @@ input[type="color"] {
 input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
 input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 50%; }
 input[type="color"]::-moz-color-swatch { border: 0; border-radius: 50%; }
+
+/* ---------- Anmeldung ---------- */
+/* Solange niemand angemeldet ist, nur den Anmeldebildschirm zeigen */
+body.logged-out > :not(.login-screen) { display: none !important; }
+body:not(.logged-out) .login-screen { display: none; }
+
+.login-screen {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--safe-top) + 24px) 16px calc(var(--safe-bottom) + 24px);
+}
+.login-card { width: 100%; max-width: 380px; text-align: center; }
+.login-card img { border-radius: 16px; }
+.login-card h1 { font-size: 26px; margin: 12px 0 4px; }
+.login-hint { color: var(--muted); font-size: 15px; margin: 0 0 20px; }
+.login-card .form-error { text-align: left; }
+.primary-btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 17px;
+}
+.primary-btn:disabled { opacity: .5; }
+
+/* ---------- Statusleiste (offline usw.) ---------- */
+.status-banner {
+  background: #ffcc00;
+  color: #1c1c1e;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  padding: 6px 12px;
+}
+
+/* Ohne Schreibrechte (offline) gibt es keinen +-Knopf und kein "Sichern" */
+body.read-only .fab,
+body.read-only #btn-save,
+body.read-only #btn-delete,
+body.read-only .inline-form,
+body.read-only .small-danger { display: none; }
+
+/* fieldset ohne Rahmen, damit es aussieht wie vorher */
+fieldset.sheet-body { border: 0; margin: 0; min-width: 0; }
+fieldset:disabled select { color: inherit; }
+
+.danger-btn.spaced { margin-top: 16px; }
+.edit-list .meta.right { text-align: right; }

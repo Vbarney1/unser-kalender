@@ -33,9 +33,16 @@ const els = {
   eventError: $('#event-error'),
   seriesHint: $('#series-hint'),
   deleteBtn: $('#btn-delete'),
+  saveBtn: $('#btn-save'),
+  eventFields: $('#event-fields'),
   settingsDialog: $('#settings-dialog'),
   categoryList: $('#category-list'),
   viewList: $('#view-list'),
+  accountEmail: $('#account-email'),
+  statusBanner: $('#status-banner'),
+  loginForm: $('#login-form'),
+  loginHint: $('#login-hint'),
+  loginError: $('#login-error'),
 };
 const F = els.eventForm.elements; // Zugriff auf Formularfelder per name, z. B. F.date
 
@@ -241,7 +248,7 @@ function renderWeek() {
 
     // Tippen auf eine leere Stelle legt dort einen Termin an.
     col.addEventListener('click', event => {
-      if (event.target !== col) return;
+      if (event.target !== col || !store.canEdit()) return;
       const y = event.clientY - col.getBoundingClientRect().top;
       const hour = Math.min(23, Math.floor(y / HOUR_PX));
       openEventForm(null, { date: iso, start: cal.minutesToTime(hour * 60) });
@@ -329,20 +336,28 @@ function fillCategorySelect(selectedId) {
   const categories = store.getCategories();
   F.categoryId.replaceChildren(...categories.map(c => el('option', { value: c.id }, c.name)));
   // Falls die Kategorie nicht (mehr) existiert, die erste nehmen.
-  F.categoryId.value = categories.some(c => c.id === selectedId) ? selectedId : categories[0].id;
+  F.categoryId.value = categories.some(c => c.id === selectedId) ? selectedId : categories[0]?.id ?? '';
 }
 
 // event = vorhandener Termin (auch ein Vorkommen einer Serie) oder null für "neu".
 function openEventForm(event, defaults = {}) {
-  els.eventForm.reset();
-  els.eventError.textContent = '';
-
   // Bei Serien bearbeiten wir das gespeicherte Original, nicht das einzelne Vorkommen.
   const original = event && store.getEvents().find(e => e.id === event.id);
+  const editable = store.canEdit();
+  if (!original && !editable) return;
+  if (!original && store.getCategories().length === 0) {
+    alert('Lege zuerst in den Einstellungen (⚙︎) eine Kategorie an.');
+    return;
+  }
+
+  els.eventForm.reset();
+  els.eventError.textContent = '';
+  // Offline: Termin nur ansehen, alle Felder gesperrt.
+  els.eventFields.disabled = !editable;
 
   if (original) {
     editingId = original.id;
-    els.eventDialogTitle.textContent = 'Termin bearbeiten';
+    els.eventDialogTitle.textContent = editable ? 'Termin bearbeiten' : 'Termin';
     F.title.value = original.title;
     fillCategorySelect(original.categoryId);
     F.date.value = original.date;
@@ -400,8 +415,23 @@ function validate(ev) {
   return null;
 }
 
+// Während gespeichert wird, Knöpfe sperren, damit nichts doppelt abgeschickt wird.
+async function busy(button, action) {
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    await action();
+  } finally {
+    button.disabled = false;
+  }
+}
+
 els.eventForm.addEventListener('submit', e => {
   e.preventDefault(); // sonst würde der Browser die Seite neu laden
+  busy(els.saveBtn, saveForm);
+});
+
+async function saveForm() {
   const allDay = F.allDay.checked;
   const ev = {
     id: editingId ?? store.newId(),
@@ -421,7 +451,12 @@ els.eventForm.addEventListener('submit', e => {
     return;
   }
 
-  store.saveEvent(ev);
+  try {
+    await store.saveEvent(ev);
+  } catch (err) {
+    els.eventError.textContent = err.message;
+    return;
+  }
   els.eventDialog.close();
   // Zum Termin springen, damit man sieht, dass er gespeichert wurde.
   if (editingId === null) {
@@ -429,34 +464,52 @@ els.eventForm.addEventListener('submit', e => {
     ui.cursor = cal.parseISODate(ev.date);
   }
   render();
-});
+}
 
-els.deleteBtn.addEventListener('click', () => {
+els.deleteBtn.addEventListener('click', () => busy(els.deleteBtn, async () => {
   const ev = store.getEvents().find(e => e.id === editingId);
   if (!ev) return;
   const series = ev.repeatUntil ? '\nDas löscht alle Wiederholungen.' : '';
   if (!confirm(`„${ev.title}" löschen?${series}`)) return;
-  store.deleteEvent(ev.id);
+  try {
+    await store.deleteEvent(ev.id);
+  } catch (err) {
+    els.eventError.textContent = err.message;
+    return;
+  }
   els.eventDialog.close();
   render();
-});
+}));
 
 $('#btn-add').addEventListener('click', () => openEventForm(null));
 
 // ---------- Einstellungen: Kategorien & Ansichten ----------
+
+// Führt eine Änderung aus, zeigt Fehler als Meldung und zeichnet danach alles neu.
+async function attempt(action) {
+  try {
+    await action();
+  } catch (err) {
+    alert(err.message);
+  }
+  renderSettings();
+  render();
+}
+
 function renderSettings() {
   const visible = visibleCategoryIds();
+  const editable = store.canEdit();
   els.categoryList.replaceChildren(
     ...store.getCategories().map(c => el('li', {},
       el('input', {
-        type: 'color', value: c.color, 'aria-label': `Farbe von ${c.name}`,
-        onchange: e => { store.updateCategory(c.id, { color: e.target.value }); render(); },
+        type: 'color', value: c.color, 'aria-label': `Farbe von ${c.name}`, disabled: !editable,
+        onchange: e => attempt(() => store.updateCategory(c.id, { color: e.target.value })),
       }),
       el('input', {
-        value: c.name, maxlength: 30, 'aria-label': 'Name',
-        onchange: e => { store.updateCategory(c.id, { name: e.target.value }); renderSettings(); render(); },
+        value: c.name, maxlength: 30, 'aria-label': 'Name', disabled: !editable,
+        onchange: e => attempt(() => store.updateCategory(c.id, { name: e.target.value })),
       }),
-      // Schalter: Kategorie im Kalender anzeigen oder ausblenden.
+      // Schalter: Kategorie im Kalender anzeigen oder ausblenden (geht auch offline, ist nur lokal).
       el('input', {
         type: 'checkbox', class: 'switch', checked: visible.includes(c.id),
         'aria-label': `${c.name} anzeigen`,
@@ -465,11 +518,7 @@ function renderSettings() {
       el('button', {
         class: 'small-danger', 'aria-label': `${c.name} löschen`,
         onclick: () => {
-          if (!confirm(`Kategorie „${c.name}" löschen?`)) return;
-          const result = store.deleteCategory(c.id);
-          if (!result.ok) alert(result.message);
-          renderSettings();
-          render();
+          if (confirm(`Kategorie „${c.name}" löschen?`)) attempt(() => store.deleteCategory(c.id));
         },
       }, '✕'),
     )),
@@ -486,9 +535,11 @@ function renderSettings() {
     el('span', { class: 'meta' }, v.categoryIds.map(id => categoryById(id)?.name).filter(Boolean).join(', ') || '–'),
     el('button', {
       class: 'small-danger', 'aria-label': `Ansicht ${v.name} löschen`,
-      onclick: () => { store.deleteView(v.id); renderSettings(); render(); },
+      onclick: () => attempt(() => store.deleteView(v.id)),
     }, '✕'),
   )));
+
+  els.accountEmail.textContent = store.getStatus().email || '–';
 }
 
 $('#btn-settings').addEventListener('click', () => {
@@ -500,23 +551,32 @@ $('#btn-settings').addEventListener('click', () => {
 $('#category-add').addEventListener('submit', e => {
   e.preventDefault();
   const form = e.target;
-  if (!form.elements.name.value.trim()) return;
-  store.addCategory(form.elements.name.value, form.elements.color.value);
-  form.elements.name.value = '';
-  renderSettings();
-  render();
+  const name = form.elements.name.value.trim();
+  if (!name) return;
+  attempt(async () => {
+    await store.addCategory(name, form.elements.color.value);
+    form.elements.name.value = '';
+  });
 });
 
 $('#view-add').addEventListener('submit', e => {
   e.preventDefault();
   const form = e.target;
   const visible = visibleCategoryIds();
-  if (!form.elements.name.value.trim()) return;
+  const name = form.elements.name.value.trim();
+  if (!name) return;
   if (visible.length === 0) return alert('Schalte zuerst mindestens eine Kategorie ein.');
-  store.addView(form.elements.name.value, visible);
-  form.elements.name.value = '';
-  renderSettings();
-  render();
+  attempt(async () => {
+    await store.addView(name, visible);
+    form.elements.name.value = '';
+  });
+});
+
+$('#btn-logout').addEventListener('click', async () => {
+  if (!confirm('Wirklich abmelden? Die Termine sind auf diesem Gerät erst nach dem nächsten Anmelden wieder zu sehen.')) return;
+  await store.signOut();
+  els.settingsDialog.close();
+  showScreen('login');
 });
 
 // Dialoge schließen per "Abbrechen"/"Fertig".
@@ -524,12 +584,103 @@ for (const dialog of document.querySelectorAll('dialog')) {
   dialog.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => dialog.close()));
 }
 
+// ---------- Anmeldung & Verbindungsstatus ----------
+let currentScreen = null;
+
+function showScreen(screen) {
+  currentScreen = screen;
+  document.body.classList.toggle('logged-out', screen !== 'app');
+  if (screen === 'app') {
+    render();
+    updateStatus();
+    return;
+  }
+  for (const d of document.querySelectorAll('dialog[open]')) d.close();
+  const setup = screen === 'setup';
+  els.loginHint.textContent = setup
+    ? 'Supabase ist noch nicht eingerichtet. Trage URL und Schlüssel in config.js ein (siehe SUPABASE.md).'
+    : 'Melde dich mit deinem Konto an.';
+  els.loginForm.querySelectorAll('input, button').forEach(x => { x.disabled = setup; });
+}
+
+// Gelbe Leiste oben und Sperren der Bearbeitung, je nach Verbindung.
+function updateStatus() {
+  const s = store.getStatus();
+  let text = '';
+  if (!s.connecting && !s.online) text = `${s.problem || 'Offline'} – nur Ansicht, Änderungen gehen gerade nicht.`;
+  else if (s.online && !s.member) text = 'Dein Konto ist noch nicht freigeschaltet (Tabelle „members“, siehe SUPABASE.md).';
+  els.statusBanner.textContent = text;
+  els.statusBanner.hidden = !text;
+  document.body.classList.toggle('read-only', !store.canEdit());
+}
+
+els.loginForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const button = els.loginForm.querySelector('button');
+  busy(button, async () => {
+    els.loginError.textContent = '';
+    const { email, password } = els.loginForm.elements;
+    if (!email.value.trim() || !password.value) {
+      els.loginError.textContent = 'Bitte E-Mail und Passwort eingeben.';
+      return;
+    }
+    try {
+      await store.signIn(email.value, password.value);
+    } catch (err) {
+      els.loginError.textContent = err.message;
+      return;
+    }
+    // Chrome/Edge ausdrücklich anbieten lassen, das Passwort zu speichern
+    // (Safari auf dem iPhone fragt von selbst über den iCloud-Schlüsselbund).
+    if (window.PasswordCredential) {
+      navigator.credentials.store(new PasswordCredential({ id: email.value.trim(), password: password.value }))
+        .catch(() => {});
+    }
+    password.value = '';
+    showScreen('app');
+    offerLegacyImport();
+  });
+});
+
+// Wer schon Version 1 benutzt hat, hat Termine nur im Browser. Einmalig anbieten, sie hochzuladen.
+async function offerLegacyImport() {
+  const old = store.legacyData();
+  if (!old || !store.canEdit()) return;
+  const question = `Auf diesem Gerät sind noch ${old.events.length} Termin(e) aus der alten Version gespeichert.\n\n`
+    + 'Sollen sie in den gemeinsamen Kalender übernommen werden?';
+  if (!confirm(question)) {
+    store.markLegacyHandled();
+    return;
+  }
+  try {
+    await store.importLegacy(old);
+    alert('Fertig – die alten Termine sind jetzt im gemeinsamen Kalender.');
+  } catch (err) {
+    alert(`${err.message}\nBeim nächsten Start wird nochmal gefragt.`);
+  }
+}
+
+// Neue Daten vom Server (auch Änderungen der anderen Person): neu zeichnen.
+store.onChange(() => {
+  if (currentScreen !== 'app') return;
+  updateStatus();
+  render();
+  if (els.settingsDialog.open) renderSettings();
+});
+
 // ---------- Start ----------
-render();
+// Erst sofort die gespeicherte Kopie zeigen, dann im Hintergrund mit Supabase verbinden.
+showScreen(store.firstScreen());
+if (currentScreen !== 'setup') {
+  store.connect().then(screen => {
+    if (screen !== currentScreen) showScreen(screen);
+    if (screen === 'app') offerLegacyImport();
+  });
+}
 
 // Jede Minute neu zeichnen (rote "Jetzt"-Linie, Tageswechsel) – aber nicht, während ein Dialog offen ist.
 setInterval(() => {
-  if (!document.querySelector('dialog[open]')) render();
+  if (currentScreen === 'app' && !document.querySelector('dialog[open]')) render();
 }, 60_000);
 
 // Service Worker registrieren: macht die App offline-fähig (siehe sw.js).

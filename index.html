@@ -16,10 +16,27 @@
   <link rel="icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
   <title>Unser Kalender</title>
+  <!-- Supabase-Bibliothek (feste Version). Stellt window.supabase bereit. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
   <!-- type="module" erlaubt import/export zwischen unseren JS-Dateien -->
   <script type="module" src="app.js"></script>
 </head>
-<body>
+<body class="logged-out">
+  <!-- Anmeldung: wird gezeigt, solange niemand angemeldet ist -->
+  <section id="login-screen" class="login-screen">
+    <form id="login-form" class="login-card" novalidate>
+      <img src="icons/icon-192.png" alt="" width="72" height="72">
+      <h1>Unser Kalender</h1>
+      <p id="login-hint" class="login-hint">Melde dich mit deinem Konto an.</p>
+      <div class="group">
+        <label class="field"><input type="email" name="email" placeholder="E-Mail" autocomplete="username" class="left"></label>
+        <label class="field"><input type="password" name="password" placeholder="Passwort" autocomplete="current-password" class="left"></label>
+      </div>
+      <p class="form-error" id="login-error" role="alert"></p>
+      <button class="primary-btn">Anmelden</button>
+    </form>
+  </section>
+
   <header class="topbar">
     <div class="topbar-row">
       <h1 id="title"></h1>
@@ -34,6 +51,8 @@
     </div>
     <nav id="filter-bar" class="filter-bar" aria-label="Filter"></nav>
   </header>
+  <!-- z. B. "Offline – nur Ansicht" -->
+  <div id="status-banner" class="status-banner" role="status" hidden></div>
 
   <main id="calendar"></main>
 
@@ -46,9 +65,10 @@
         <button type="button" class="text-btn" data-close>Abbrechen</button>
         <!-- autofocus + tabindex: Fokus landet beim Öffnen hier statt im Textfeld (keine Tastatur) -->
         <h2 id="event-dialog-title" tabindex="-1" autofocus>Neuer Termin</h2>
-        <button type="submit" class="text-btn strong">Sichern</button>
+        <button type="submit" id="btn-save" class="text-btn strong">Sichern</button>
       </div>
-      <div class="sheet-body">
+      <!-- fieldset: offline werden alle Felder auf einmal gesperrt (disabled) -->
+      <fieldset id="event-fields" class="sheet-body">
         <div class="group">
           <label class="field"><input name="title" placeholder="Titel" maxlength="100" autocomplete="off" class="left"></label>
           <label class="field chevron"><span>Kategorie</span><select name="categoryId"></select></label>
@@ -71,7 +91,7 @@
         </div>
         <p class="form-error" id="event-error" role="alert"></p>
         <button type="button" id="btn-delete" class="danger-btn">Termin löschen</button>
-      </div>
+      </fieldset>
     </form>
   </dialog>
 
@@ -98,7 +118,13 @@
         <input name="name" placeholder="Name, z. B. Studium" maxlength="30" required class="left">
         <button class="text-btn strong">Speichern</button>
       </form>
-      <p class="hint below">Speichert die gerade eingeschalteten Kategorien als Ansicht. Sie erscheint dann oben als Schnellauswahl.</p>
+      <p class="hint below">Speichert die gerade eingeschalteten Kategorien als Ansicht. Sie erscheint dann oben als Schnellauswahl. Ansichten sieht nur dein Konto.</p>
+
+      <h3>Konto</h3>
+      <ul class="edit-list">
+        <li><span class="name">Angemeldet als</span><span class="meta right" id="account-email"></span></li>
+      </ul>
+      <button type="button" id="btn-logout" class="danger-btn spaced">Abmelden</button>
     </div>
   </dialog>
 </body>
