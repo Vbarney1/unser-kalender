@@ -614,7 +614,31 @@ function updateStatus() {
   document.body.classList.toggle('read-only', !store.canEdit());
 }
 
+// Passwort-Speicher des Browsers nach erfolgreicher Anmeldung anstoßen.
+let realSubmit = false;
+function offerPasswordSave(email, password) {
+  // Chrome/Edge: direkt fragen lassen.
+  if (window.PasswordCredential) {
+    navigator.credentials.store(new PasswordCredential({ id: email, password })).catch(() => {});
+    return;
+  }
+  // Safari (iPhone) fragt nur nach einem ECHTEN Abschicken des Formulars. Deshalb schicken
+  // wir es zusätzlich an eine leere Seite (about:blank) in einem unsichtbaren iframe.
+  // Dabei verlässt nichts das Gerät – about:blank wird nicht aus dem Internet geladen.
+  const form = els.loginForm;
+  form.method = 'post';
+  form.action = 'about:blank';
+  form.target = 'login-sink';
+  realSubmit = true;
+  try {
+    form.requestSubmit ? form.requestSubmit() : form.submit();
+  } finally {
+    realSubmit = false;
+  }
+}
+
 els.loginForm.addEventListener('submit', e => {
+  if (realSubmit) return; // das echte Abschicken für Safari durchlassen
   e.preventDefault();
   const button = els.loginForm.querySelector('button');
   busy(button, async () => {
@@ -630,12 +654,7 @@ els.loginForm.addEventListener('submit', e => {
       els.loginError.textContent = err.message;
       return;
     }
-    // Chrome/Edge ausdrücklich anbieten lassen, das Passwort zu speichern
-    // (Safari auf dem iPhone fragt von selbst über den iCloud-Schlüsselbund).
-    if (window.PasswordCredential) {
-      navigator.credentials.store(new PasswordCredential({ id: email.value.trim(), password: password.value }))
-        .catch(() => {});
-    }
+    offerPasswordSave(email.value.trim(), password.value);
     password.value = '';
     showScreen('app');
     offerLegacyImport();
